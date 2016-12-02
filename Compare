@@ -1,0 +1,74 @@
+#---------------------------prepare-----------------------------------------------#
+library(glmnet)
+library(randomForest)
+# name dataset
+dataset = t(Kidney_2)
+# set CV times as cv_times
+cv_times = 50
+
+# CV
+cv_mse_lasso = c()
+cv_mse_ridge = c()
+cv_mse_rf = c()
+for (seed_num in 1:cv_times){
+  set.seed(seed_num)
+  print(seed_num)
+  # One time cv
+  # Randomly shuffle the data
+  dataset<-dataset[sample(nrow(dataset)),]
+  
+  #Create 10 equally size folds
+  folds <- cut(seq(1,nrow(dataset)),breaks=10,labels=FALSE)
+  #Perform 10 fold cross validation
+  mse_lasso = c()
+  mse_rf = c()
+  mse_ridge = c()
+  for(i in 1:10){
+    #target = dataset["Mapk1",]
+    #features = dataset[rownames(Kidney_2)!="Mapk1",]
+    #Segement your data by fold using the which() function 
+    testIndexes <- which(folds==i,arr.ind=TRUE)
+    testData <- dataset[testIndexes, ]
+    trainData <- dataset[-testIndexes, ]
+    # set 
+    target_train = trainData[,"Mapk1"]
+    features_train = trainData[,colnames(trainData)!="Mapk1"]
+    target_test = testData[,"Mapk1"]
+    features_test = testData[,colnames(testData)!="Mapk1"]
+    #------------lasso------------------#
+    # train model of lasso
+    cvfit_lasso = cv.glmnet(features_train,target_train, alpha=1,nfolds = 10)
+    model = glmnet(features_train, target_train, alpha=1,lambda=cvfit_lasso$lambda.min)
+    # test model of lasso
+    prediction = predict(model, newx = features_test)
+    mse_lasso=c(mse_lasso,mean((prediction-target_test)^2))
+    #----------random forest--------------#
+    # train rf
+    rf.fit = randomForest(Mapk1~., data = trainData, importance=TRUE, ntree=800)
+    # test model
+    prediction = predict(rf.fit, newdata = testData)
+    real = testData[, "Mapk1"]
+    mse_rf = c(mse_rf,mean((prediction-real)^2))
+    #------------ridge------------------#
+    # train model of ridge
+    cvfit_ridge = cv.glmnet(features_train, target_train, alpha=0,nfolds = 10)
+    model = glmnet(features_train,target_train, alpha=0,lambda=cvfit_ridge$lambda.min)
+    # test model of ridge
+    prediction = predict(model, newx = features_test)
+    mse_ridge=c(mse_ridge,mean((prediction-target_test)^2))
+    
+    }
+  print(paste("lasso ",mean(mse_lasso)))
+  print(paste("ridge ",mean(mse_ridge)))
+  print(paste("random forest ",mean(mse_rf)))
+  cv_mse_lasso = c(cv_mse_lasso,mean(mse_lasso))
+  cv_mse_ridge = c(cv_mse_ridge,mean(mse_ridge))
+  cv_mse_rf = c(cv_mse_rf,mean(mse_rf))
+  
+}
+
+print(paste("Total lasso",mean(cv_mse_lasso)))
+print(paste("Total ridge",mean(cv_mse_ridge)))
+print(paste("Total random forest",mean(cv_mse_rf)))
+dat <- data.frame(Lasso=cv_mse_lasso, Ridge=cv_mse_ridge, RandomForest = cv_mse_rf)
+boxplot(dat)
